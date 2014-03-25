@@ -21,8 +21,16 @@ module Beaker
       @hosts.each do |host|
         @logger.notify "provisioning #{host.name}"
 
-        @logger.debug("Creating image")
-        image = ::Docker::Image.build(dockerfile_for(host))
+        build_opts = {}
+
+        if host.has_key?(:cache_image)
+            build_opts[:rm] = ! host[:cache_image]
+        end
+
+
+
+        @logger.debug("Creating image with opts: #{build_opts}")
+        image = ::Docker::Image.build(dockerfile_for(host), build_opts)
         @logger.debug("Tagging image #{image.id} as #{host.name}")
         image.tag({
           :repo => host.name,
