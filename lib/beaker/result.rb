@@ -44,8 +44,51 @@ module Beaker
       logger.debug "Exited: #{exit_code}" unless exit_code == 0
     end
 
-    def formatted_output(limit=10)
-      @output.split("\n").last(limit).collect {|x| "\t" + x}.join("\n")
+    def filter_puppet_loglevel(loglevel)
+      # valid loglevel in right order
+      loglevels = ['debug', 'info', 'notice', 'warning', 'err', 'alert', 'emerg','crit']
+
+      # check if loglevel is valid and get int
+      if loglevels.include?(loglevel)
+        loglevel=loglevels.index(loglevel)
+      else
+        loglevel=loglevels.index('warning')
+      end
+
+      # build re with loglevels
+      re_loglevel_values = loglevels.map {|x| Regexp.escape(x)}.join('|')
+      re_loglevels = /^(#{re_loglevel_values}):/
+
+      # group logs
+      output = []
+      selected = false
+
+      @output.lines.each do |line|
+        line_nocolor = line.gsub(/\e\[[^m]*m/, '')
+        match =  re_loglevels.match(line_nocolor)
+
+        # only if new loglevel line
+        if match
+          # only wanted loglevels
+          if loglevels.include?(match[1]) and  (loglevels.index(match[1]) >= loglevel)
+            selected = true
+          else
+            selected = false
+          end
+
+        end
+
+        output += [line] if selected
+
+      end
+
+      output
+    end
+
+
+    def formatted_output(limit=10,loglevel='warning')
+      output=filter_puppet_loglevel(loglevel)
+      output.last(limit).collect {|x| "\t" + x}.join('')
     end
 
     def exit_code_in?(range)
