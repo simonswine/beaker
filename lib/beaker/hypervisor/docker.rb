@@ -1,5 +1,3 @@
-require 'docker'
-
 module Beaker
   class Docker < Beaker::Hypervisor
 
@@ -8,13 +6,17 @@ module Beaker
       @logger = options[:logger]
       @hosts = hosts
 
+      if RUBY_VERSION >= "1.9"
+        require 'docker'
+      else
+        raise "Docker plugins needs ruby >= 1.8"
+      end
+
       # increase the http timeouts as provisioning images can be slow
       ::Docker.options = { :write_timeout => 300, :read_timeout => 300 }
       # assert that the docker-api gem can talk to your docker
       # enpoint.  Will raise if there is a version mismatch
       ::Docker.validate_version!
-      # Pass on all the logging from docker-api to the beaker logger instance
-      ::Docker.logger = @logger
     end
 
     def provision
@@ -23,8 +25,16 @@ module Beaker
       @hosts.each do |host|
         @logger.notify "provisioning #{host.name}"
 
-        @logger.debug("Creating image")
-        image = ::Docker::Image.build(dockerfile_for(host), { :rm => true })
+        build_opts = {}
+
+        if host.has_key?(:cache_image)
+            build_opts[:rm] = ! host[:cache_image]
+        end
+
+
+
+        @logger.debug("Creating image with opts: #{build_opts}")
+        image = ::Docker::Image.build(dockerfile_for(host), build_opts)
         @logger.debug("Tagging image #{image.id} as #{host.name}")
         image.tag({
           :repo => host.name,
@@ -110,7 +120,7 @@ module Beaker
           RUN apt-get update
           RUN apt-get install -y openssh-server openssh-client
         EOF
-      when /^el-/, /centos/, /fedora/, /redhat/
+      when /centos/, /fedora/, /redhat/
         dockerfile += <<-EOF
           RUN yum clean all
           RUN yum install -y sudo openssh-server openssh-clients
@@ -131,7 +141,7 @@ module Beaker
 
       # Make sshd directory, set root password
       dockerfile += <<-EOF
-        RUN mkdir -p /var/run/sshd
+        RUN mkdir /var/run/sshd
         RUN echo root:#{root_password} | chpasswd
       EOF
 
